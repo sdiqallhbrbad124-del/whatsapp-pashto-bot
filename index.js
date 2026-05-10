@@ -1,111 +1,45 @@
-const {
-  default: makeWASocket,
-  useMultiFileAuthState,
-  fetchLatestBaileysVersion
-} = require('@whiskeysockets/baileys')
+const { Client, LocalAuth } = require('whatsapp-web.js');
+const qrcode = require('qrcode-terminal');
+const Groq = require('groq-sdk');
 
-const pino = require('pino')
+const groq = new Groq({
+  apiKey: process.env.GROQ_API_KEY
+});
 
-async function startBot() {
+const client = new Client({
+  authStrategy: new LocalAuth(),
+  puppeteer: {
+    headless: true,
+    args: ['--no-sandbox', '--disable-setuid-sandbox']
+  },
+  pairingCode: true,
+});
 
-  const { state, saveCreds } =
-    await useMultiFileAuthState('./session')
+client.on('code', (code) => {
+    console.log('*** Pairing Code:', code, '***');
+    console.log('*** دا کوډ په WhatsApp ولیکه ***');
+});
 
-  const { version } =
-    await fetchLatestBaileysVersion()
+client.on('ready', () => {
+    console.log('بوټ چالان شو ✅');
+});
 
-  const sock = makeWASocket({
-    version,
-    logger: pino({ level: 'silent' }),
-    auth: state,
-    browser: ['Wisal Bot', 'Chrome', '1.0.0'],
-    printQRInTerminal: false,
-    usePairingCode: true
-  })
-
-  sock.ev.on('creds.update', saveCreds)
-
-  if (!sock.authState.creds.registered) {
-
-    const code =
-      await sock.requestPairingCode('93703930172')
-
-    console.log(`
-========================
-PAIRING CODE: ${code}
-========================
-`)
+client.on('message', async (message) => {
+  if (message.body) {
+    try {
+      const chatCompletion = await groq.chat.completions.create({
+        messages: [{ role: 'user', content: message.body }],
+        model: 'llama-3.1-8b-instant'
+      });
+      const reply = chatCompletion.choices[0]?.message?.content || 'ځواب نشم ورکولی';
+      message.reply(reply);
+    } catch (error) {
+      console.log('Error:', error);
+      message.reply('بخښنه، ستونزه پېښه شوه');
+    }
   }
+});
 
-  sock.ev.on('connection.update', ({ connection }) => {
-
-    if (connection === 'open') {
-      console.log('✅ BOT CONNECTED')
-    }
-
-  })
-
-  sock.ev.on('messages.upsert', async ({ messages }) => {
-
-    const msg = messages[0]
-
-    if (!msg.message) return
-
-    const from = msg.key.remoteJid
-
-    const text =
-      msg.message.conversation ||
-      msg.message.extendedTextMessage?.text ||
-      ''
-
-    // ته څوک یې
-    if (
-      text.includes('ته څوک یې') ||
-      text.includes('ته څوک يي')
-    ) {
-
-      await sock.sendMessage(from, {
-        text:
-          'زه د ویصال احمد بوټ یم 🤖\nزه د ویصال احمد لخوا جوړ شوی یم.'
-      })
-
-    }
-
-    // سلام
-    else if (
-      text.includes('سلام') ||
-      text.includes('hi')
-    ) {
-
-      await sock.sendMessage(from, {
-        text:
-          'وعلیکم سلام 🌸\nزه ستاسو AI بوټ یم.'
-      })
-
-    }
-
-    // Voice Message
-    else if (msg.message.audioMessage) {
-
-      await sock.sendMessage(from, {
-        text:
-          '🎤 ستاسو صوتي پیغام مې ترلاسه کړ.'
-      })
-
-    }
-
-    // Default Reply
-    else {
-
-      await sock.sendMessage(from, {
-        text:
-          `تاسو وویل:\n${text}\n\n🤖 ویصال AI بوټ`
-      })
-
-    }
-
-  })
-
-}
-
-startBot()
+client.initialize().then(() => {
+  client.requestPairingCode('+93703930172');
+});
