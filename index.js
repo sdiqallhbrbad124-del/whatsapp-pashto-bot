@@ -9,6 +9,40 @@ Browsers
 const pino = require('pino')
 const axios = require('axios')
 
+// 🔥 AI FUNCTION
+async function askAI(question) {
+try {
+
+const res = await axios.post(
+"https://api.openai.com/v1/chat/completions",
+{
+model: "gpt-3.5-turbo",
+messages: [
+{
+role: "system",
+content: "You are a smart AI assistant. You answer in Pashto, English, Dari or any language. You know world history including Afghanistan history."
+},
+{
+role: "user",
+content: question
+}
+]
+},
+{
+headers: {
+"Authorization": "Bearer YOUR_OPENAI_API_KEY",
+"Content-Type": "application/json"
+}
+}
+)
+
+return res.data.choices[0].message.content
+
+} catch (e) {
+return "❌ AI error occurred"
+}
+}
+
 async function startBot() {
 
 const { state, saveCreds } =
@@ -21,16 +55,35 @@ const sock = makeWASocket({
 version,
 auth: state,
 printQRInTerminal: false,
-markOnlineOnConnect: true,
-syncFullHistory: false,
 logger: pino({ level: 'silent' }),
 browser: Browsers.ubuntu('Chrome')
 })
 
-// Save session
 sock.ev.on('creds.update', saveCreds)
 
-// Connection
+
+// ================== 🔑 PAIRING CODE ==================
+setTimeout(async () => {
+try {
+
+if (!sock.authState.creds.registered) {
+
+const code = await sock.requestPairingCode('93703930172')
+
+console.log(`
+=====================
+📱 PAIR CODE: ${code}
+=====================
+`)
+}
+
+} catch (err) {
+console.log("PAIR ERROR:", err)
+}
+}, 5000)
+
+
+// ================== CONNECTION ==================
 sock.ev.on('connection.update', (update) => {
 
 const { connection, lastDisconnect } = update
@@ -40,38 +93,17 @@ console.log('🔄 CONNECTING...')
 }
 
 if (connection === 'open') {
-console.log('✅ CONNECTED SUCCESSFULLY')
+console.log('✅ BOT CONNECTED')
 }
 
 if (connection === 'close') {
 const reason = lastDisconnect?.error?.output?.statusCode
-
-console.log('❌ CLOSED:', reason)
 
 if (reason !== DisconnectReason.loggedOut) {
 startBot()
 }
 }
 })
-
-
-// ================== PAIRING CODE ==================
-setTimeout(async () => {
-try {
-if (!sock.authState.creds.registered) {
-
-const code = await sock.requestPairingCode('93703930172')
-
-console.log(`
-=====================
-PAIR CODE: ${code}
-=====================
-`)
-}
-} catch (err) {
-console.log('PAIR ERROR:', err)
-}
-}, 10000)
 
 
 // ================== MESSAGES ==================
@@ -86,81 +118,16 @@ const text =
 msg.message.conversation ||
 msg.message.extendedTextMessage?.text || ''
 
-const body = text.toLowerCase()
-
-
-// ================== GREETING ==================
-if (body.includes('سلام') || body.includes('hi')) {
+// 🤖 AI RESPONSE
+const reply = await askAI(text)
 
 await sock.sendMessage(from, {
-text: `🌸 وعلیکم سلام!\n🤖 زه ستاسو AI بوټ یم.`
+text: `🤖 AI Reply:\n\n${reply}`
 })
-
-}
-
-// ================== WHO ARE YOU ==================
-else if (body.includes('ته څوک یې')) {
-
-await sock.sendMessage(from, {
-text: `🤖 زه د ویصال احمد AI بوټ یم`
-})
-
-}
-
-
-// ================== 🎨 DESIGN / IMAGE ==================
-else if (body.startsWith('ډیزاین') || body.startsWith('عکس')) {
-
-const prompt = text.replace('ډیزاین', '').replace('عکس', '').trim()
-
-if (!prompt) {
-await sock.sendMessage(from, {
-text: '🖼️ مثال: ډیزاین ښکلی غر د لمر سره'
-})
-return
-}
-
-try {
-
-// FREE IMAGE API
-const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
-
-await sock.sendMessage(from, {
-image: { url: imageUrl },
-caption: `🎨 ډیزاین جوړ شو:\n${prompt}`
-})
-
-} catch (e) {
-
-await sock.sendMessage(from, {
-text: '❌ عکس جوړ نه شو، وروسته بیا هڅه وکړه'
-})
-
-}
-}
-
-
-// ================== AUDIO ==================
-else if (msg.message.audioMessage) {
-
-await sock.sendMessage(from, {
-text: '🎤 صوتي پیغام ترلاسه شو'
-})
-
-}
-
-
-// ================== DEFAULT (FIXED) ==================
-else {
-
-await sock.sendMessage(from, {
-text: `📩 تاسو وویل:\n${text}\n\n🤖 ویصال AI بوټ`
-})
-
-}
 
 })
 
+console.log("🤖 AI Bot Running...")
 }
 
 startBot()
