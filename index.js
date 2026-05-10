@@ -1,89 +1,111 @@
-const { default: makeWASocket, DisconnectReason, useMultiFileAuthState, downloadMediaMessage } = require("@whiskeysockets/baileys")
-const { GoogleGenerativeAI } = require("@google/generative-ai")
-const pino = require("pino")
-const express = require('express')
+const {
+  default: makeWASocket,
+  useMultiFileAuthState,
+  fetchLatestBaileysVersion
+} = require('@whiskeysockets/baileys')
 
-const app = express()
-const port = process.env.PORT || 3000
-app.get('/', (req, res) => res.send('Pashto AI Bot Running ✅'))
-app.listen(port, () => console.log(`Server running on ${port}`))
-
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+const pino = require('pino')
 
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState("session")
-    const sock = makeWASocket({
-        logger: pino({ level: "silent" }),
-        printQRInTerminal: false,
-        auth: state,
-        browser: ["WhatsApp-Pashto-Bot", "Chrome", "1.0.0"]
-    })
 
-    sock.ev.on("creds.update", saveCreds)
+  const { state, saveCreds } =
+    await useMultiFileAuthState('./session')
 
-    sock.ev.on("connection.update", async (update) => {
-        const { connection, lastDisconnect } = update
-        if (connection === "close") {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode!== DisconnectReason.loggedOut
-            if (shouldReconnect) startBot()
-        } else if (connection === "open") {
-            console.log("✅ Bot connected to WhatsApp!")
-        }
-        if (!sock.authState.creds.registered) {
-            const phoneNumber = "93703930172"
-            const code = await sock.requestPairingCode(phoneNumber)
-            console.log(`✅ Pairing Code: ${code}`)
-        }
-    })
+  const { version } =
+    await fetchLatestBaileysVersion()
 
-    sock.ev.on("messages.upsert", async ({ messages }) => {
-        const msg = messages[0]
-        if (!msg.message || msg.key.fromMe) return
-        const sender = msg.key.remoteJid
+  const sock = makeWASocket({
+    version,
+    logger: pino({ level: 'silent' }),
+    auth: state,
+    browser: ['Wisal Bot', 'Chrome', '1.0.0'],
+    printQRInTerminal: false,
+    usePairingCode: true
+  })
 
-        try {
-            await sock.sendPresenceUpdate("composing", sender)
-            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" })
+  sock.ev.on('creds.update', saveCreds)
 
-            // Text Message
-            const text = msg.message.conversation || msg.message.extendedTextMessage?.text
+  if (!sock.authState.creds.registered) {
 
-            // 🔥 که څوک پوښتنه وکړي "ته څوک یې"
-            if (text && (text.includes("ته څوک یې") || text.includes("څوک یې") || text.includes("نوم دې څه دی") || text.toLowerCase().includes("who are you"))) {
-                await sock.sendMessage(sender, {
-                    text: "زه د ويصال احمد بوټ یم 🤖\nزه ويصال احمد لخوا جوړ شوی یم 💚\nستاسو خدمت کې یم وروره!"
-                })
-                return
-            }
+    const code =
+      await sock.requestPairingCode('93703930172')
 
-            // Voice Message
-            if (msg.message.audioMessage) {
-                const buffer = await downloadMediaMessage(msg, "buffer", {})
-                const audioBase64 = buffer.toString("base64")
-                const audioPrompt = {
-                    inlineData: {
-                        data: audioBase64,
-                        mimeType: "audio/ogg"
-                    }
-                }
-                const result = await model.generateContent([
-                    "ته د ويصال احمد بوټ یې. دا غږ واوره او په پښتو لنډ ځواب ورکړه:",
-                    audioPrompt
-                ])
-                const reply = result.response.text()
-                await sock.sendMessage(sender, { text: reply })
-            }
-            // Text Message - AI ځواب
-            else if (text) {
-                const result = await model.generateContent(`ته د ويصال احمد بوټ یې. لنډ او په زړه پورې پښتو ځواب ورکړه: ${text}`)
-                const reply = result.response.text()
-                await sock.sendMessage(sender, { text: reply })
-            }
-        } catch (err) {
-            console.log(err)
-            await sock.sendMessage(sender, { text: "بخښنه وروره، ستونزه راغله 😔" })
-        }
-    })
+    console.log(`
+========================
+PAIRING CODE: ${code}
+========================
+`)
+  }
+
+  sock.ev.on('connection.update', ({ connection }) => {
+
+    if (connection === 'open') {
+      console.log('✅ BOT CONNECTED')
+    }
+
+  })
+
+  sock.ev.on('messages.upsert', async ({ messages }) => {
+
+    const msg = messages[0]
+
+    if (!msg.message) return
+
+    const from = msg.key.remoteJid
+
+    const text =
+      msg.message.conversation ||
+      msg.message.extendedTextMessage?.text ||
+      ''
+
+    // ته څوک یې
+    if (
+      text.includes('ته څوک یې') ||
+      text.includes('ته څوک يي')
+    ) {
+
+      await sock.sendMessage(from, {
+        text:
+          'زه د ویصال احمد بوټ یم 🤖\nزه د ویصال احمد لخوا جوړ شوی یم.'
+      })
+
+    }
+
+    // سلام
+    else if (
+      text.includes('سلام') ||
+      text.includes('hi')
+    ) {
+
+      await sock.sendMessage(from, {
+        text:
+          'وعلیکم سلام 🌸\nزه ستاسو AI بوټ یم.'
+      })
+
+    }
+
+    // Voice Message
+    else if (msg.message.audioMessage) {
+
+      await sock.sendMessage(from, {
+        text:
+          '🎤 ستاسو صوتي پیغام مې ترلاسه کړ.'
+      })
+
+    }
+
+    // Default Reply
+    else {
+
+      await sock.sendMessage(from, {
+        text:
+          `تاسو وویل:\n${text}\n\n🤖 ویصال AI بوټ`
+      })
+
+    }
+
+  })
+
 }
 
 startBot()
