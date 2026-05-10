@@ -7,6 +7,7 @@ Browsers
 } = require('@whiskeysockets/baileys')
 
 const pino = require('pino')
+const axios = require('axios')
 
 async function startBot() {
 
@@ -22,157 +23,139 @@ auth: state,
 printQRInTerminal: false,
 markOnlineOnConnect: true,
 syncFullHistory: false,
-defaultQueryTimeoutMs: 60000,
-connectTimeoutMs: 60000,
-keepAliveIntervalMs: 10000,
 logger: pino({ level: 'silent' }),
 browser: Browsers.ubuntu('Chrome')
 })
 
-// Save Session
+// Save session
 sock.ev.on('creds.update', saveCreds)
 
 // Connection
-sock.ev.on('connection.update',
-async (update) => {
+sock.ev.on('connection.update', (update) => {
 
-const {
-connection,
-lastDisconnect
-} = update
+const { connection, lastDisconnect } = update
 
 if (connection === 'connecting') {
-
 console.log('🔄 CONNECTING...')
-
 }
 
 if (connection === 'open') {
-
 console.log('✅ CONNECTED SUCCESSFULLY')
-
 }
 
 if (connection === 'close') {
+const reason = lastDisconnect?.error?.output?.statusCode
 
-const reason =
-lastDisconnect?.error?.output?.statusCode
-
-console.log('❌ CONNECTION CLOSED:', reason)
+console.log('❌ CLOSED:', reason)
 
 if (reason !== DisconnectReason.loggedOut) {
-
-console.log('♻️ RECONNECTING...')
-
 startBot()
-
 }
-
 }
-
 })
 
-// Pairing Code
+
+// ================== PAIRING CODE ==================
 setTimeout(async () => {
-
 try {
-
 if (!sock.authState.creds.registered) {
 
-const code =
-await sock.requestPairingCode(
-'93703930172'
-)
+const code = await sock.requestPairingCode('93703930172')
 
 console.log(`
-========================
-PAIR CODE:
-${code}
-========================
+=====================
+PAIR CODE: ${code}
+=====================
 `)
-
 }
-
 } catch (err) {
-
 console.log('PAIR ERROR:', err)
-
 }
-
 }, 10000)
 
-// Messages
-sock.ev.on('messages.upsert',
-async ({ messages }) => {
 
-try {
+// ================== MESSAGES ==================
+sock.ev.on('messages.upsert', async ({ messages }) => {
 
 const msg = messages[0]
-
-if (!msg.message) return
-
-// مهم: خپل message ته reply مه کوه
-if (msg.key.fromMe) return
+if (!msg.message || msg.key.fromMe) return
 
 const from = msg.key.remoteJid
 
 const text =
 msg.message.conversation ||
-msg.message.extendedTextMessage?.text ||
-''
+msg.message.extendedTextMessage?.text || ''
 
 const body = text.toLowerCase()
 
-// سلام
-if (
-body.includes('سلام') ||
-body.includes('hi') ||
-body.includes('hello')
-) {
+
+// ================== GREETING ==================
+if (body.includes('سلام') || body.includes('hi')) {
 
 await sock.sendMessage(from, {
-text:
-'🌸 وعلیکم سلام\nزه ستاسو AI بوټ یم.'
+text: `🌸 وعلیکم سلام!\n🤖 زه ستاسو AI بوټ یم.`
 })
 
 }
 
-// ته څوک یې
-else if (
-body.includes('ته څوک یې') ||
-body.includes('ته څوک يي')
-) {
+// ================== WHO ARE YOU ==================
+else if (body.includes('ته څوک یې')) {
 
 await sock.sendMessage(from, {
-text:
-'🤖 زه د ویصال احمد بوټ یم.\nزه د ویصال احمد لخوا جوړ شوی یم.'
+text: `🤖 زه د ویصال احمد AI بوټ یم`
 })
 
 }
 
-// صوتي پیغام
+
+// ================== 🎨 DESIGN / IMAGE ==================
+else if (body.startsWith('ډیزاین') || body.startsWith('عکس')) {
+
+const prompt = text.replace('ډیزاین', '').replace('عکس', '').trim()
+
+if (!prompt) {
+await sock.sendMessage(from, {
+text: '🖼️ مثال: ډیزاین ښکلی غر د لمر سره'
+})
+return
+}
+
+try {
+
+// FREE IMAGE API
+const imageUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
+
+await sock.sendMessage(from, {
+image: { url: imageUrl },
+caption: `🎨 ډیزاین جوړ شو:\n${prompt}`
+})
+
+} catch (e) {
+
+await sock.sendMessage(from, {
+text: '❌ عکس جوړ نه شو، وروسته بیا هڅه وکړه'
+})
+
+}
+}
+
+
+// ================== AUDIO ==================
 else if (msg.message.audioMessage) {
 
 await sock.sendMessage(from, {
-text:
-'🎤 ستاسو صوتي پیغام مې ترلاسه کړ.'
+text: '🎤 صوتي پیغام ترلاسه شو'
 })
 
 }
 
-// Default Reply
+
+// ================== DEFAULT (FIXED) ==================
 else {
 
 await sock.sendMessage(from, {
-text:
-`📩 تاسو وویل:\n${text}\n\n🤖 ویصال AI بوټ`
+text: `📩 تاسو وویل:\n${text}\n\n🤖 ویصال AI بوټ`
 })
-
-}
-
-} catch (err) {
-
-console.log(err)
 
 }
 
