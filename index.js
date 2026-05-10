@@ -111,6 +111,9 @@ const msg = messages[0]
 
 if (!msg.message) return
 
+// مهم: خپل message ته reply مه کوه
+if (msg.key.fromMe) return
+
 const from = msg.key.remoteJid
 
 const text =
@@ -118,10 +121,26 @@ msg.message.conversation ||
 msg.message.extendedTextMessage?.text ||
 ''
 
-// ته څوک یې
+const body = text.toLowerCase()
+
+// سلام
 if (
-text.includes('ته څوک یې') ||
-text.includes('ته څوک يي')
+body.includes('سلام') ||
+body.includes('hi') ||
+body.includes('hello')
+) {
+
+await sock.sendMessage(from, {
+text:
+'🌸 وعلیکم سلام\nزه ستاسو AI بوټ یم.'
+})
+
+}
+
+// ته څوک یې
+else if (
+body.includes('ته څوک یې') ||
+body.includes('ته څوک يي')
 ) {
 
 await sock.sendMessage(from, {
@@ -131,25 +150,22 @@ text:
 
 }
 
-// سلام
-else if (
-text.includes('سلام') ||
-text.includes('hi')
-) {
-
-await sock.sendMessage(from, {
-text:
-'وعلیکم سلام 🌸\nزه ستاسو AI بوټ یم.'
-})
-
-}
-
-// Voice Message
+// صوتي پیغام
 else if (msg.message.audioMessage) {
 
 await sock.sendMessage(from, {
 text:
 '🎤 ستاسو صوتي پیغام مې ترلاسه کړ.'
+})
+
+}
+
+// Default Reply
+else {
+
+await sock.sendMessage(from, {
+text:
+`📩 تاسو وویل:\n${text}\n\n🤖 ویصال AI بوټ`
 })
 
 }
