@@ -26,13 +26,13 @@ defaultQueryTimeoutMs: 60000,
 connectTimeoutMs: 60000,
 keepAliveIntervalMs: 10000,
 logger: pino({ level: 'silent' }),
-browser: Browsers.macOS('Desktop')
+browser: Browsers.ubuntu('Chrome')
 })
 
 // Save Session
 sock.ev.on('creds.update', saveCreds)
 
-// Connection Update
+// Connection
 sock.ev.on('connection.update',
 async (update) => {
 
@@ -60,7 +60,6 @@ lastDisconnect?.error?.output?.statusCode
 
 console.log('❌ CONNECTION CLOSED:', reason)
 
-// Auto reconnect
 if (reason !== DisconnectReason.loggedOut) {
 
 console.log('♻️ RECONNECTING...')
@@ -73,7 +72,7 @@ startBot()
 
 })
 
-// مهم Delay
+// Pairing Code
 setTimeout(async () => {
 
 try {
@@ -100,7 +99,7 @@ console.log('PAIR ERROR:', err)
 
 }
 
-}, 25000)
+}, 10000)
 
 // Messages
 sock.ev.on('messages.upsert',
