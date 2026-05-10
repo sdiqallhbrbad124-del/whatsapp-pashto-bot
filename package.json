@@ -1,8 +1,12 @@
-if (!sock.authState.creds.registered) {
-  const phoneNumber = '989332085889'
-
-  setTimeout(async () => {
-    const code = await sock.requestPairingCode(phoneNumber)
-    console.log(`PAIRING CODE: ${code}`)
-  }, 5000)
+{
+  "name": "wisal-bot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.6.0",
+    "pino": "^8.17.0"
+  }
 }
