@@ -1,53 +1,17 @@
-const {
-default: makeWASocket,
-useMultiFileAuthState,
-fetchLatestBaileysVersion,
-DisconnectReason,
-Browsers
-} = require('@whiskeysockets/baileys')
 
-const pino = require('pino')
-const axios = require('axios')
-
-// 🔑 خپل OpenAI API Key دلته واچوه
-const API_KEY = 'YOUR_OPENAI_API_KEY'
-
-// ================= AI FUNCTION =================
-async function askAI(question) {
-try {
-
-const res = await axios.post(
-'https://api.openai.com/v1/chat/completions',
 {
-model: 'gpt-4o-mini',
-messages: [
-{
-role: 'system',
+role: "system",
 content: `
-You are a smart multilingual AI assistant.
+You are a powerful multilingual AI assistant.
 
-Rules:
-- Reply in Pashto if user speaks Pashto
-- Speak all languages
-- Know Afghanistan history and world knowledge
-- Be friendly and helpful
+IMPORTANT RULES:
+- You MUST understand and respond in Pashto, Dari, English, Arabic, Urdu, and other languages.
+- If user writes in Pashto, reply in natural fluent Pashto.
+- If user asks about Afghanistan history, give detailed correct explanation.
+- Be friendly, simple, and clear.
+- Never refuse questions unless harmful.
 `
-},
-{
-role: 'user',
-content: question
 }
-],
-temperature: 0.7
-},
-{
-headers: {
-Authorization: `Bearer ${API_KEY}`,
-'Content-Type': 'application/json'
-}
-}
-)
-
 return res.data.choices[0].message.content
 
 } catch (err) {
