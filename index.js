@@ -1,23 +1,80 @@
+const {
+default: makeWASocket,
+useMultiFileAuthState,
+fetchLatestBaileysVersion,
+DisconnectReason,
+Browsers
+} = require('@whiskeysockets/baileys')
 
+const pino = require('pino')
+const axios = require('axios')
+
+// ================= CONFIG =================
+
+// 🔑 خپل OpenAI API KEY دلته واچوه
+const API_KEY = 'YOUR_OPENAI_API_KEY'
+
+// 📱 خپل WhatsApp نمبر
+const PHONE_NUMBER = '93703930172'
+
+// ==========================================
+
+
+// ================= AI FUNCTION =================
+async function askAI(question) {
+
+try {
+
+const response = await axios.post(
+'https://api.openai.com/v1/chat/completions',
 {
-role: "system",
+model: 'gpt-4o-mini',
+
+messages: [
+{
+role: 'system',
 content: `
-You are a powerful multilingual AI assistant.
+You are an advanced multilingual AI assistant.
 
-IMPORTANT RULES:
-- You MUST understand and respond in Pashto, Dari, English, Arabic, Urdu, and other languages.
-- If user writes in Pashto, reply in natural fluent Pashto.
-- If user asks about Afghanistan history, give detailed correct explanation.
-- Be friendly, simple, and clear.
-- Never refuse questions unless harmful.
+Rules:
+- Reply in the same language as user
+- Speak Pashto fluently
+- Know Afghanistan history
+- Answer clearly and smartly
+- Be friendly
+- Help users with technology, education, religion, history, coding, and general knowledge
 `
+},
+{
+role: 'user',
+content: question
 }
-return res.data.choices[0].message.content
+],
 
-} catch (err) {
-console.log('AI ERROR =>', err.response?.data || err.message)
-return '❌ AI مشکل لري. API KEY یا internet وګوره.'
+temperature: 0.7,
+max_tokens: 1000
+
+},
+{
+headers: {
+Authorization: `Bearer ${API_KEY}`,
+'Content-Type': 'application/json'
 }
+}
+)
+
+return response.data.choices[0].message.content
+
+} catch (error) {
+
+console.log(
+'AI ERROR:',
+error.response?.data || error.message
+)
+
+return '❌ AI مشکل لري. API Key یا internet وګوره.'
+}
+
 }
 
 // ================= START BOT =================
@@ -30,27 +87,54 @@ const { version } =
 await fetchLatestBaileysVersion()
 
 const sock = makeWASocket({
+
 version,
 auth: state,
+
 printQRInTerminal: false,
-logger: pino({ level: 'silent' }),
+
+markOnlineOnConnect: true,
+
+syncFullHistory: false,
+
+defaultQueryTimeoutMs: 60000,
+
+connectTimeoutMs: 60000,
+
+keepAliveIntervalMs: 10000,
+
+logger: pino({
+level: 'silent'
+}),
+
 browser: Browsers.ubuntu('Chrome')
+
 })
 
-// SAVE SESSION
+// ================= SAVE SESSION =================
 sock.ev.on('creds.update', saveCreds)
 
-// ================= CONNECTION =================
-sock.ev.on('connection.update', (update) => {
 
-const { connection, lastDisconnect } = update
+// ================= CONNECTION =================
+sock.ev.on(
+'connection.update',
+async (update) => {
+
+const {
+connection,
+lastDisconnect
+} = update
 
 if (connection === 'connecting') {
+
 console.log('🔄 CONNECTING...')
+
 }
 
 if (connection === 'open') {
+
 console.log('✅ AI BOT CONNECTED')
+
 }
 
 if (connection === 'close') {
@@ -61,41 +145,61 @@ lastDisconnect?.error?.output?.statusCode
 console.log('❌ CONNECTION CLOSED:', reason)
 
 if (reason !== DisconnectReason.loggedOut) {
+
 console.log('♻️ RECONNECTING...')
+
 startBot()
+
 }
+
 }
-})
+
+}
+)
+
 
 // ================= PAIRING CODE =================
 setTimeout(async () => {
+
 try {
 
 if (!sock.authState.creds.registered) {
 
 const code =
-await sock.requestPairingCode('93703930172')
+await sock.requestPairingCode(
+PHONE_NUMBER
+)
 
 console.log(`
 ========================
-PAIR CODE: ${code}
+📱 PAIR CODE: ${code}
 ========================
 `)
+
 }
 
 } catch (err) {
+
 console.log('PAIR ERROR:', err)
+
 }
+
 }, 5000)
 
-// ================= MESSAGES =================
-sock.ev.on('messages.upsert', async ({ messages }) => {
+
+// ================= MESSAGE SYSTEM =================
+sock.ev.on(
+'messages.upsert',
+
+async ({ messages }) => {
 
 try {
 
 const msg = messages[0]
 
 if (!msg.message) return
+
+// ❌ خپل message ignore کړه
 if (msg.key.fromMe) return
 
 const from = msg.key.remoteJid
@@ -109,77 +213,112 @@ if (!text) return
 
 console.log('📩 MESSAGE:', text)
 
-// 🤖 AI REPLY
-const reply = await askAI(text)
+
+// ================= SIMPLE COMMANDS =================
+
+// سلام
+if (
+text.includes('سلام') ||
+text.toLowerCase().includes('hi') ||
+text.toLowerCase().includes('hello')
+) {
 
 await sock.sendMessage(from, {
-text: reply
+text:
+'🌸 وعلیکم سلام!\n🤖 زه ستاسو پرمختللی AI بوټ یم.'
+})
+
+return
+}
+
+
+// وخت
+if (
+text.includes('وخت') ||
+text.toLowerCase() === 'time'
+) {
+
+const now = new Date()
+
+await sock.sendMessage(from, {
+text:
+`🕒 وخت:\n${now.toLocaleString()}`
+})
+
+return
+}
+
+
+// ================= IMAGE GENERATOR =================
+if (
+text.startsWith('عکس') ||
+text.startsWith('ډیزاین')
+) {
+
+const prompt =
+text
+.replace('عکس', '')
+.replace('ډیزاین', '')
+.trim()
+
+if (!prompt) {
+
+await sock.sendMessage(from, {
+text:
+'🖼️ مثال:\nعکس ښکلی غر د لمر سره'
+})
+
+return
+}
+
+const imageUrl =
+`https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}`
+
+await sock.sendMessage(from, {
+
+image: {
+url: imageUrl
+},
+
+caption:
+`🎨 ستاسو عکس جوړ شو:\n${prompt}`
+
+})
+
+return
+}
+
+
+// ================= AUDIO MESSAGE =================
+if (msg.message.audioMessage) {
+
+await sock.sendMessage(from, {
+text:
+'🎤 ستاسو صوتي پیغام ترلاسه شو.'
+})
+
+return
+}
+
+
+// ================= AI REPLY =================
+const aiReply = await askAI(text)
+
+await sock.sendMessage(from, {
+text: aiReply
 })
 
 } catch (err) {
+
 console.log('MESSAGE ERROR:', err)
+
 }
-})
+
+}
+)
 
 console.log('🤖 AI BOT RUNNING...')
+
 }
 
 startBot()
-import { default as makeWASocket, useMultiFileAuthState, DisconnectReason } from '@whiskeysockets/baileys';
-import pino from 'pino';
-import fs from 'fs';
-import path from 'path';
-
-const phoneNumber = '93703930172';
-const authFolder = './auth_info';
-
-// 1. هر ځل Deploy کې زوړ Session ووهه
-if (fs.existsSync(authFolder)) {
-    fs.rmSync(authFolder, { recursive: true, force: true });
-    console.log('>>> زوړ Session پاک شو. نوی کوډ غوښتل کیږي...');
-}
-
-async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState(authFolder);
-
-    const sock = makeWASocket({
-        auth: state,
-        printQRInTerminal: false,
-        mobile: false, // ← دا مهم دی
-        logger: pino({ level: 'silent' }),
-        browser: ['Windows', 'Chrome', '110.0.0'] // ← دا نوم 8 رقمي کوډ راوړي
-    });
-
-    // 2. که راجسټر نه وي، سمدستي کوډ وغواړه
-    if (!sock.authState.creds.registered) {
-        await new Promise(r => setTimeout(r, 1500)); // 1.5 ثانیه انتظار
-        try {
-            const code = await sock.requestPairingCode(phoneNumber);
-            console.log('');
-            console.log('================ PAIRING CODE ================');
-            console.log('>>>  ', code, '  <<<');
-            console.log('================ PAIRING CODE ================');
-            console.log('دا کوډ په WhatsApp کې ولیکه: Linked devices > Link with phone number');
-        } catch (err) {
-            console.log('❌ کوډ ونه غوښتل شو:', err.message);
-        }
-    }
-
-    sock.ev.on('connection.update', (update) => {
-        const { connection, lastDisconnect } = update;
-        if (connection === 'open') {
-            console.log('✅ بوټ وټساپ سره وصل شو!');
-        }
-        if (connection === 'close') {
-            const statusCode = lastDisconnect?.error?.output?.statusCode;
-            console.log('قطع شو. Status:', statusCode);
-            if (statusCode !== DisconnectReason.loggedOut) {
-                startBot();
-            }
-        }
-    });
-
-    sock.ev.on('creds.update', saveCreds);
-}
-
-startBot();
